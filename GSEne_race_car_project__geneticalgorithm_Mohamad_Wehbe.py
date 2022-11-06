@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import tabulate as tab
 import cmath as math
 import pandas as pd
 from geneticalgorithm import geneticalgorithm as ga
@@ -41,8 +43,10 @@ control_system_power=vehicle_data[12]/1000 #kW
 
 available_area_pv=vehicle_data[13] #m2
 pv_efficiency=vehicle_data[14] #kw/m2
-pv_power=available_area_pv*pv_efficiency #kW
+pv_power=available_area_pv*pv_efficiency*600/1000 #kW ### note: professor added the value for pv irradiance LATE! and by then my model was already built. I added it as 600/1000 (or 0.6 kw/m2 or 600 w/m2)
+pv_weight=3*available_area_pv #assumed 3 kgs per meter squared
 
+total_weight=pv_weight+vehicle_weight+battery_weight #kg 
         ### environment
 
 air_density=1.225 #kg/m^3
@@ -65,26 +69,36 @@ co2_emissions=fuel_data[1] #kgCO2/kWh
 average_irradiance=fuel_data[2] #w/m2
 
         ### check inputs
+           
+            #### arrange data
+        
+vehicle_data_table_values=np.concatenate((vehicle_weight,drag_coefficient,rolling_friction,frontal_area,powertrain_power,[powertrain_efficiency],\
+    battery_capacity,battery_power,battery_weight,[battery_soc],regenerative_breaking_power,regenerative_breaking_efficiency,\
+    cooling_system_power,lights_power,control_system_power,available_area_pv,pv_efficiency,pv_power,pv_weight,[air_density],[gravity],total_weight))
 
+vehicle_data_table_titles=np.concatenate((['vehicle weight'],['drag coefficient'],['rolling friction'],['frontal area'],['powertrain power'],['powertrain efficiency'],\
+    ['battery capacity'],['battery power'],['battery weight'],['battery soc'],['regenerative breaking power'],['regenerative breaking efficiency'],\
+    ['cooling system power'],['lights power'],['control system power'],['available area pv'],['pv efficiency'],['pv power'],['pv_weight'],['air density'],['gravity'],['total weight']))
+vehicle_table=np.stack((vehicle_data_table_titles,vehicle_data_table_values), axis=1)
+
+track_data_titles=np.concatenate((['speed limit (m/s)','length (m)','slope(degrees)'],np.concatenate(np.stack((track_max_speed,track_length,track_slope),axis=1))))
+track_table=np.reshape(track_data_titles,(-1,3))
+       
+        #### print tables
+
+print('vehicle data')
+print(tab.tabulate(vehicle_table))
+print('track data')
+print(tab.tabulate(track_table))
+print('number of laps:',number_of_laps)
 
 # Objective function and constraints
 
     ##initialize functions
 
-time_minimum=(track_length/(track_max_speed)) #seconds for 20 laps
-
-
-
 track_acceleration=np.array(np.zeros(42))
 
 time_lap_minimum=0
-
-i=0
-
-for i in range(0, len(time_minimum)):    
-   time_lap_minimum = time_lap_minimum + time_minimum[i]; #minimum time for one lap
- 
-time_total_minimum=time_lap_minimum*number_of_laps #minimum time for 20 laps
 
     ## Define objective function
 
@@ -92,7 +106,7 @@ def totaltime(track_speed):
 
         ### Globalize relevant variables
 
-    global track_time, total_force, track_acceleration, power, energy, battery_final_capacity, total_energy
+    global track_time, track_acceleration, power, energy, battery_final_capacity, total_energy
 
     track_time=(track_length/track_speed)
 
@@ -101,9 +115,9 @@ def totaltime(track_speed):
     for i in range(0,len(track_time)):
        
         if i == 0:
-            track_acceleration[i]=(track_speed[i+1]**2+0)/(2*track_length[i]) #m/s^2 ### note: the v at the begining might be non zero, but I use the acceleration for calc and considered 0 at the start as you can see
+            track_acceleration[i]=(track_speed[i+1]**2+0)/(2*track_length[i]) #m/s^2
         elif (i % 2) == 0:
-            track_acceleration[i]=(track_speed[i+1]-track_speed[i-1]**2)/(2*track_length[i])
+            track_acceleration[i]=(track_speed[i+1]**2-track_speed[i-1]**2)/(2*track_length[i])
         else:
             track_acceleration[i]=0
 
@@ -122,10 +136,13 @@ def totaltime(track_speed):
             #### forces
 
     aerodynamic_force=0.5*air_density*frontal_area*drag_coefficient*track_speed*track_speed*acceleration_sign #newtons
-    slope_losses=(vehicle_weight+battery_weight)*gravity*np.sin(track_slope) #newtons
-    acceleration_force=(battery_weight+vehicle_weight)*(track_acceleration) #newtons
-    friction_losses=(vehicle_weight+battery_weight)*gravity*rolling_friction*np.cos(track_slope)*acceleration_sign #newtons
+    slope_losses=(total_weight)*gravity*np.sin(track_slope) #newtons
+    acceleration_force=(total_weight)*(track_acceleration) #newtons
+    friction_losses=(total_weight)*gravity*rolling_friction*np.cos(track_slope)*acceleration_sign #newtons
     total_force=acceleration_force+aerodynamic_force+friction_losses+slope_losses #newtons
+    for i in range(0,len(total_force)): # since regenerative breaking has an efficiency of 15%
+        if total_force[i] < 0:
+            total_force[i]=total_force[i]*regenerative_breaking_efficiency
 
             #### power and energy
     
@@ -139,7 +156,7 @@ def totaltime(track_speed):
 
         ### calculate final capacity after 20 laps
     
-    battery_final_capacity = battery_capacity - total_energy*number_of_laps # battery final capacity after 20 laps
+    battery_final_capacity = battery_capacity + total_energy*number_of_laps # battery final capacity after 20 laps
 
         #Calculate total time per lap
 
@@ -162,7 +179,7 @@ def totaltime(track_speed):
 
 #Adjust GA parameters
 
-algorithm_param = {'max_num_iteration': 5000,\
+algorithm_param = {'max_num_iteration': 1000,\
                    'population_size':100,\
                    'mutation_probability':0.1,\
                    'elit_ratio': 0.01,\
@@ -179,4 +196,15 @@ varbound=np.stack((np.zeros(len(track_max_speed)),track_max_speed),axis=1)
 
 model=ga(function=totaltime,dimension=len(track_length),variable_type='real',variable_boundaries=varbound, algorithm_parameters=algorithm_param)
 model.run()
-print(model.output_dict)
+
+# calculate emissions
+
+
+
+# Parse Results
+
+model_values=model.output_dict.values()
+model_values_list=list(model_values)
+
+track_speed=model_values_list[0]
+total_time=model_values_list[1]
