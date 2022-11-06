@@ -1,6 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import tabulate as tab
 import cmath as math
 import pandas as pd
 from geneticalgorithm import geneticalgorithm as ga
