@@ -9,9 +9,9 @@ from geneticalgorithm import geneticalgorithm as ga
 
     ## read the input data
 
-vehicle_data_df=pd.read_excel('Case2_vehicle.xlsx',usecols=[1])
-track_data_df=pd.read_excel('Case2_track.xlsx')
-fuel_data_df=pd.read_excel('Case2_fuel.xlsx',usecols=[1])
+vehicle_data_df=pd.read_excel('Case3_vehicle.xlsx',usecols=[1])
+track_data_df=pd.read_excel('Case3_track.xlsx')
+fuel_data_df=pd.read_excel('Case3_fuel.xlsx',usecols=[1])
  
     ## dataframe to array
 
@@ -92,7 +92,6 @@ print('track data')
 print(tab.tabulate(track_table))
 print('number of laps:',number_of_laps)
 
-# Objective function and constraints
 
     ##initialize functions
 
@@ -100,7 +99,7 @@ track_acceleration=np.array(np.zeros(42))
 
 time_lap_minimum=0
 
-    ## Define objective function
+# Define objective function
 
 def totaltime(track_speed):
 
@@ -197,10 +196,6 @@ varbound=np.stack((np.zeros(len(track_max_speed)),track_max_speed),axis=1)
 model=ga(function=totaltime,dimension=len(track_length),variable_type='real',variable_boundaries=varbound, algorithm_parameters=algorithm_param)
 model.run()
 
-# calculate emissions
-
-
-
 # Parse Results
 
 model_values=model.output_dict.values()
@@ -208,3 +203,106 @@ model_values_list=list(model_values)
 
 track_speed=model_values_list[0]
 total_time=model_values_list[1]
+
+# dashboard
+print('\n')
+print('total time:',round(total_time,2),'s')
+
+from time import strftime
+from time import gmtime
+hours_mins_seconds=strftime("%H:%M:%S", gmtime(total_time))
+print('           ',hours_mins_seconds)
+print('\n')
+print('\n')
+
+segments=list(range(0,len(track_length)))
+plt.plot(segments,track_speed,marker='o')
+plt.plot(segments,track_max_speed,marker='o', linestyle='dotted')
+plt.title("Velocity per segment")
+plt.xlabel("Segments")
+plt.ylabel("Velocity (m/s)")
+plt.legend(["Actual Velocity", "Max Velocity"], loc ="lower right")
+plt.show()
+print('\n')
+
+max_power=np.repeat(min(powertrain_power,battery_power),len(track_length))
+plt.plot(segments,-power,marker='o')
+plt.plot(segments,max_power,  linestyle='dotted')
+plt.title("power per segment")
+plt.xlabel("Segments")
+plt.ylabel("Power (kW)")
+plt.legend(["Actual Power", "Max Power"], loc ="lower right")
+plt.show()
+print('note: In the graph above, positive power denotes power wasted and negetive power denotes power generated.')
+print('\n')
+
+plt.plot(segments,-energy,marker='o')
+plt.title("energy per segment")
+plt.xlabel("Segments")
+plt.ylabel("Energy (kWh)")
+plt.legend(["Actual Energy"], loc ="lower right")
+plt.show()
+print('note: In the graph above, positive energy denotes power wasted and negetive power denotes energy generated.')
+print('\n')
+
+energy_accumulated_lap=np.zeros(42)
+energy_accumulated_lap[0]=energy[0]
+for i in range(0, len(energy)-1):
+    energy_accumulated_lap[i+1]=energy_accumulated_lap[i]+energy[i+1]
+
+plt.plot(segments,-energy_accumulated_lap,marker='o')
+plt.title("energy accumulated across lap")
+plt.xlabel("Segments")
+plt.ylabel("Energy (kWh)")
+plt.legend(["Energy"], loc ="lower right")
+plt.show()
+print('total energy spent per lap:',sum(-energy),'kWh')
+print('\n')
+
+energy_accumulated_race=np.zeros(840)
+energy_accumulated_race[0]=energy[0]
+energy_repeat=np.repeat(energy, 20)
+for i in range(0, len(energy_repeat)-1):
+    energy_accumulated_race[i+1]=energy_accumulated_race[i]+energy_repeat[i+1]
+segments_race=np.repeat(segments,20)
+
+battery_capacity_race=np.repeat(battery_capacity,840)
+for i in range (0, len(battery_capacity_race)):
+    battery_capacity_race[i]=battery_capacity_race[i]+energy_accumulated_race[i]
+
+
+
+
+plt.plot(segments_race,-energy_accumulated_race)
+plt.plot(segments_race,battery_capacity_race)
+plt.title("energy accumulated vs battery capacity across race")
+plt.xlabel("Segments")
+plt.ylabel("Energy (kWh)")
+plt.legend(["Energy",'battery capacity'], loc ="lower right")
+plt.show()
+print('total energy spent across race:',sum(-energy_repeat),'kWh')
+print('\n')
+
+#CO2 emissions:
+co2=np.zeros(42)
+for i in range(0 , len(energy)):
+    if energy[i] < 0:
+        co2[i]=co2_emissions*-energy[i]
+
+
+plt.plot(segments,co2, 'o:k')
+plt.title("CO2 emissions per segment")
+plt.xlabel("Segments")
+plt.ylabel("CO2 emissions (kg CO2)")
+plt.legend(['CO2 emissions'], loc ='lower right')
+plt.show()
+print('total CO2 emissions:',sum(co2),'kg CO2')
+print('\n')
+
+
+pie = [float(battery_final_capacity),float(battery_capacity)]
+ratio=round(float(battery_final_capacity/battery_capacity)*100)
+plt.pie(pie,labels=[ratio,''],colors=['red','grey'])
+plt.title('remaining battery capacity (%)')
+plt.show() 
+print('final battery capacity',battery_final_capacity,'kWh')
